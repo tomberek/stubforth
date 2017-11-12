@@ -107,6 +107,7 @@ static cell t_$1[eval($#-1)] = { init_union(shift($@)) };
 undefine(`self')
 ')
 
+/*
 dnl C helpers
 static int my_getchar() {
   int c;
@@ -120,7 +121,7 @@ static int my_getchar() {
   }
   return getchar();
 }
-
+*/
 static int strcmp(const char *a, const char *b) {
   while (*a && *a == *b)
      a++, b++;
@@ -159,11 +160,11 @@ const word *find(const word *p, const char *key)
    return p;
 }
 
-dnl main
-int main()
-{
-  cell result;
-  char *startword;
+char *startword = "boot";
+dnl fsetup
+void fsetup(){
+   my_puts("abort: ");
+   my_puts("\n");
 
   initio();
   forth = vm(0,0).a;
@@ -175,7 +176,34 @@ int main()
   } else {
       startword = "quit";
   }
+}
+dnl fstep
+void fstep(){
+    cell result;
+    redirect = 0;
+    vmstate.compiling = 0;
+    vmstate.base = 16;
+    vmstate.sp = param_stack;
+    vmstate.rp = return_stack;
 
+    result = vm(&vmstate, &find(vmstate.dictionary, startword)->code);
+
+    if (!result.s)
+       return;
+    else {
+       my_puts("abort: ");
+       my_puts(result.s);
+       my_puts("\n");
+    }
+
+    startword = "quit";
+}
+
+dnl fmain
+int fmain()
+{
+  cell result;
+  my_puts("after forth assign\r\n");
 
   while(1) {
     redirect = 0;
@@ -866,8 +894,7 @@ sinclude(platform.m4)
 
 undivert(div_word)
 
-dnl startup
-
+dnl startup
 start:
 {
     thread(top, BYE)
