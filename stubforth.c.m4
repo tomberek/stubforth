@@ -1,4 +1,5 @@
 changecom(/*,*/)
+// #include <avr/pgmspace.h>
 #include "platform.h"
 #include "stubforth.h"
 #include "config.h"
@@ -159,11 +160,10 @@ const word *find(const word *p, const char *key)
    return p;
 }
 
-dnl main
-int main()
+char *startword = "boot";
+dnl fmain
+void fsetup()
 {
-  cell result;
-  char *startword;
 
   initio();
   forth = vm(0,0).a;
@@ -176,8 +176,10 @@ int main()
       startword = "quit";
   }
 
-
-  while(1) {
+}
+int fstep(){
+  // while(1) {
+  cell result;
     redirect = 0;
     vmstate.compiling = 0;
     vmstate.base = 16;
@@ -195,7 +197,7 @@ int main()
     }
 
     startword = "quit";
-  }
+  // }
 }
 
 dnl VM
@@ -786,7 +788,7 @@ dnl ( a -- )
 secondary(then,, .immediate=1,
  HERE, SWAP, STORE
 )
-
+/*
 dnl -- pad
 secondary(ahead,, .immediate=1, l(
  LIT BRANCH COMMA HERE NEUTRAL COMMA
@@ -804,6 +806,7 @@ secondary(until,, .immediate=1, LIT, ZBRANCH, COMMA, COMMA)
 
 dnl ( -- a )
 secondary(while,, .immediate=1, IF)
+*/
 
 dnl ( a a -- )
 secondary(repeat,, .immediate=1,
@@ -813,9 +816,10 @@ secondary(repeat,, .immediate=1,
  /* patch the while jump */
  THEN)
 
-secondary(hi,,, LIT, .s= FORTHNAME " " REVISION "\n", TYPE)
+secondary(hi,,, LIT, .s= FORTHNAME " " REVISION "\n", TYPE, LIT, 42, EMIT, QUIT)
 
 secondary(boot,,, HI, QUIT)
+/*
 
 primary(cold)
   vmstate->dictionary = 0;
@@ -847,10 +851,13 @@ secondary(postpone,, .immediate=1, l(
    IMMEDIATEP ZBRANCH self[6] COMMA EXIT
    LITERAL LIT COMMA COMMA
 ))
+*/
 
 dnl convenience
 
 dnl non-core
+
+/*
 include(core.m4)
 include(core-ext.m4)
 include(tools.m4)
@@ -859,6 +866,7 @@ include(ffi.m4)
 include(floating.m4)
 include(double.m4)
 include(bitfiddle.m4)
+*/
 
 dnl platform
 

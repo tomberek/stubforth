@@ -2,6 +2,8 @@
 #define STUBFORTH_H
 
 #include "config.h"
+void fsetup();
+int fstep();
 
 union cell {
   void *a;
