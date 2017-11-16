@@ -5,16 +5,14 @@
 
 extern "C" int fmain();
 extern "C" int fsetup();
-extern "C" int fstep();
+extern "C" int fstep(char []);
 
 int readline(int, char*, int);
 
 extern "C" void setup(void){
     Serial.begin(9600);
     delay(100);
-    Serial.write('#');
     fsetup();
-    Serial.write('!');
 }
 
 // static char readline_buffer[80];
@@ -22,10 +20,8 @@ extern "C" void setup(void){
 extern "C" void loop(void){
     // static int res;
     if (readline(Serial.read(), readline_buffer, 80) > 0) {
-        Serial.print("You entered: >");
-        Serial.print(readline_buffer);
-        Serial.println("<");
-        fstep();
+        fstep(readline_buffer);
+        Serial.println("done");
     }
 }
 
@@ -43,7 +39,6 @@ int readline(int readch, char *buffer, int len)
   if (readch > 0) {
     switch (readch) {
       case '\n': // Ignore new-lines
-        break;
       case '\r': // Return on CR
         rpos = pos;
         pos = 0;  // Reset position index ready for next time

@@ -2,7 +2,8 @@
 
 GAS ?= avr-ld
 GCC ?= avr-g++
-CFLAGS ?= -g -Os -Wall -std=gnu++11 -Wcast-align -mmcu=atmega32u4 -fno-exceptions  -fno-threadsafe-statics -ffunction-sections -fdata-sections -flto -fuse-linker-plugin -Wl,--gc-sections -Wl,--print-gc-sections
+CFLAGS ?= -g -Os -Wall -std=c++11 -Wcast-align -mmcu=atmega32u4 -fno-exceptions  -fno-threadsafe-statics -ffunction-sections -fdata-sections  -Wl,--print-gc-sections -Wno-unused-label -Wno-unused-variable -Wno-unused-but-set-variable -fno-jump-tables
+#CFLAGS ?= -g -O0 -Wall -std=c++11 -Wcast-align -mmcu=atmega32u4 -fno-exceptions  -fno-threadsafe-statics -ffunction-sections -fdata-sections -flto -fuse-linker-plugin -Wl,--gc-sections -Wl,--print-gc-sections -Wno-unused-label -Wno-unused-variable -Wno-unused-but-set-variable
 
 #CFLAGS ?= -w -g -Os -Wall -std=gnu++11 -Wcast-align -mmcu=atmega32u4 -fpermissive -fno-exceptions  -fno-threadsafe-statics -fno-keep-static-consts -fzero-initialized-in-bss -ffunction-sections -fdata-sections -MMD -flto -fuse-linker-plugin -fno-fat-lto-objects -Wl,--gc-sections
 #LFLAGS ?= -g -Os -g ffunction-sectinos -fdata-sections -flto -fuse-linker-plugin -Wl,--gc-sections -mmcu=atmega32u4 
@@ -14,6 +15,7 @@ DEFINES ?= -DF_CPU=16000000L -DARDUINO=10804 -DARDUINO_AVR_PROMICRO -DARDUINO_AR
 # '-DUSB_MANUFACTURER="Unknown"' '-DUSB_PRODUCT="SparkFun Pro Micro"'
 #DEFINES ?= -w -std=gnu++11 -fpermissive -fno-exceptions -ffunction-sections -fdata-sections -fno-threadsafe-statics -MMD -flto -mmcu=atmega32u4 -DF_CPU=16000000L -DARDUINO=10804 -DARDUINO_AVR_PROMICRO -DARDUINO_ARCH_AVR  -DUSB_VID=0x1b4f -DUSB_PID=0x9206 -DUSB_MANUFACTURER="tomberek" -DUSB_PRODUCT="SparkForth" 
 all: stubforth.hex
+	avr-objdump -P mem-usage stubforth.elf
 
 config.h: .rev.h
 
@@ -59,7 +61,8 @@ upload: stubforth.hex
 	m4 $(SYNC) $< > $@
 
 term:
-	stty -F /dev/ttyACM0 speed 9600 ; minicom -b9600 -D/dev/ttyACM0
+	#stty -F /dev/ttyACM0 speed 9600 ; minicom -b9600 -D/dev/ttyACM0
+	picocom /dev/ttyACM0 -c
 
 dump: stubforth.elf
 	avr-objdump -m avr5 $< -rzDsS | less

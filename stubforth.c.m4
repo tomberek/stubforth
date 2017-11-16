@@ -1,5 +1,6 @@
 changecom(/*,*/)
-// #include <avr/pgmspace.h>
+#include <avr/pgmspace.h>
+#include <string.h>
 #include "platform.h"
 #include "stubforth.h"
 #include "config.h"
@@ -31,9 +32,10 @@ dnl $2 - ANS94 error string
 define(`cthrow', `
 do {
    ifelse($#, 2,
-     `return t.s="$2", t;',
+   `return t.s="$2", t;',
      `return t.i=$1, t;')
 } while (0)')
+
 
 define(primary, `
 dnl Cons a primary word
@@ -41,13 +43,15 @@ dnl $1 - C identifier
 dnl $2 - forth word (default: $1)
 dnl $3... - flags
 undivert(div_word)
+static const char __flash w_$1_s[] = "ifelse(`$2',`',`translit(`$1',_,-)',`$2')";
 $1:
 divert(div_word)
   goto next;
   static word w_$1 = {
-    .name = "ifelse(`$2',`',`translit(`$1',_,-)',`$2')",
+    .name = { .name_p = w_$1_s },
     .link = (word *) dict_head,
-    .code = &&$1
+    .code = &&$1,
+    .builtin = 1
     dnl optional flags
     ifelse(`$3',`',`',`, .$3=1')
     ifelse(`$4',`',`',`, .$4=1')
@@ -71,13 +75,16 @@ dnl $4... - cell data
 
 define(secondary, `
 undivert(div_word)
+static const char __flash w_$1_s[] = "ifelse(`$2',`',`translit(`$1',_,-)',`$2')";
 define(`self', `&w_$1.data')
 define(translit($1,a-z,A-Z), &w_$1.code)
 static struct { staticword(eval($#-2)) } w_$1 = {
-  .name = "ifelse($2,`',`translit($1,_,-)',$2)",
+  .name = { .name_p = w_$1_s },
+  dnl .name = { "ifelse($2,`',`translit($1,_,-)',$2)" },
   .link = (word *)dict_head,
   .code = &&enter,
    ifelse(`$3',`',`',`$3,')
+  .builtin = 1,
   .data = { init_union(shift(shift(shift($@)))) , {EXIT}}
 };
   undefine(`self')
@@ -87,11 +94,15 @@ static struct { staticword(eval($#-2)) } w_$1 = {
 dnl Cons a constant
 define(constant, `ifelse($#,0,``$0'',`
 undivert(div_word)
+static const __flash char w_$1_s[] = "ifelse(`$2',`',`translit(`$1',_,-)',`$2')";
+
 static struct { staticword(1) } w_$1 = {
-  .name = "ifelse($2,`',`translit($1,_,-)',$2)",
+  .name = { .name_p = w_$1_s },
+dnl "ifelse($2,`',`translit($1,_,-)',$2)" },
   .link = (word *)dict_head,
   .code = &&docon,
-  .data = { init_union(shift(shift($@))) }
+  .data = { init_union(shift(shift($@))) },
+  .builtin = 1,
 };
 
   define(`dict_head', &w_$1)
@@ -122,12 +133,14 @@ static int my_getchar() {
   return getchar();
 }
 
+/*
 static int strcmp(const char *a, const char *b) {
   while (*a && *a == *b)
      a++, b++;
   return (*a == *b) ? 0 : (*a > *b) ? 1 : -1;
 }
 
+*/
 dnl increase p until it has cell alignment
 void *aligned(void *vp) {
   char *p = vp;
@@ -153,14 +166,20 @@ void my_puts(const char *s) {
 const word *find(const word *p, const char *key)
 {
    while(p) {
-      if(! p->smudge && (0 == strcmp(p->name, key)))
-         break;
+      if(p->builtin){
+        if(! p->smudge && (0 == strcmp_P(key,p->name.name_p)))
+          break;
+      } else {
+        if(! p->smudge && (0 == strcmp(p->name.name_d, key)))
+          break;
+      }
+
       p = p->link;
    }
    return p;
 }
 
-char *startword = "boot";
+char * startword = "boot";
 dnl fmain
 void fsetup()
 {
@@ -171,20 +190,19 @@ void fsetup()
   if(!vmstate.dp) {
       vmstate.dp = dictionary_stack;
       vmstate.dictionary = forth;
-      startword = "boot";
+      strcpy(startword,"boot");
   } else {
-      startword = "quit";
+      strcpy(startword,"quit");
   }
+  vmstate.sp = param_stack;
+  vmstate.rp = return_stack;
+  vmstate.base = 16;
 
 }
-int fstep(){
-  // while(1) {
-  cell result;
-    redirect = 0;
+int fstep(unsigned char input[]){
+    cell result;
+    redirect = input;
     vmstate.compiling = 0;
-    vmstate.base = 16;
-    vmstate.sp = param_stack;
-    vmstate.rp = return_stack;
 
     result = vm(&vmstate, &find(vmstate.dictionary, startword)->code);
 
@@ -196,8 +214,8 @@ int fstep(){
        my_puts("\n");
     }
 
-    startword = "quit";
-  // }
+    strcpy(startword,"quit");
+  return 0;
 }
 
 dnl VM
@@ -219,11 +237,11 @@ cell vm(struct vmstate *vmstate, void *const*xt)
      goto init;
 
   /* remember the initial values so we can detect underflow */
-  cell *sp_base, *rp_base, *dp_base;
+  cell *sp_base, *rp_base; // TOM: , *dp_base;
 
   sp_base = sp = vmstate->sp;
   rp_base = rp = vmstate->rp;
-  dp_base = vmstate->dp;
+  // TOM: dp_base = vmstate->dp;
 
 goto start;
 
@@ -402,10 +420,12 @@ primary(divmod, /mod)
 dnl control primitives
 
 dnl --
+
 primary(abort)
   vmstate->sp = sp;
   vmstate->rp = rp;
   cthrow(-1, abort);
+
 
 dnl --
 primary(branch, , compile_only)
@@ -439,7 +459,7 @@ primary(catch)
   new.rp = rp;
   result = vm(&new, xt);
   if (!result.s) {
-     /* local return, adopt state of the child VM */
+     // local return, adopt state of the child VM
      *vmstate = new;
      sp = new.sp;
      rp = new.rp;
@@ -631,7 +651,7 @@ dnl ( -- s ) read a word, return zstring, allocated on dictionary stack
   *s++ = 0;
   (sp++)->s = (char *)vmstate->dp;
 
-  /* fix alignment */
+  // fix alignment
   vmstate->dp = aligned(s);
 }
 
@@ -664,7 +684,7 @@ dnl On failure, abort.
       c -= '0';
    else
     {
-      c |= 1 << 5; /* upcase */
+      c |= 1 << 5; // upcase
       c = c - 'a' + 10;
     }
    if (c < 0 || c >= vmstate->base) {
@@ -739,11 +759,12 @@ primary(cons)
 {
   vmstate->dp = aligned(vmstate->dp);
   word *new = (word *)vmstate->dp;
-  new->name = (--sp)->s;
+  new->name.name_d = (--sp)->s;
   new->link = vmstate->dictionary;
   new->smudge = 1;
   new->immediate = 0;
   new->compile_only = 0;
+  dnl new->builtin = 0;
   vmstate->compiling = 1;
   vmstate->dictionary = new;
   vmstate->dp = (cell *) &new->code;
@@ -788,7 +809,7 @@ dnl ( a -- )
 secondary(then,, .immediate=1,
  HERE, SWAP, STORE
 )
-/*
+
 dnl -- pad
 secondary(ahead,, .immediate=1, l(
  LIT BRANCH COMMA HERE NEUTRAL COMMA
@@ -806,20 +827,24 @@ secondary(until,, .immediate=1, LIT, ZBRANCH, COMMA, COMMA)
 
 dnl ( -- a )
 secondary(while,, .immediate=1, IF)
-*/
 
 dnl ( a a -- )
 secondary(repeat,, .immediate=1,
  SWAP,
- /* deal with unconditional jump first */
+ // deal with unconditional jump first
  LIT, BRANCH, COMMA, COMMA,
- /* patch the while jump */
+ // patch the while jump
  THEN)
 
-secondary(hi,,, LIT, .s= FORTHNAME " " REVISION "\n", TYPE, LIT, 42, EMIT, QUIT)
+
+dnl secondary(green,,, LIT, .i=0x70, LIT, .i=0x30, STORE, LIT, .i=0x50, LIT , .i=0x31, STORE)
+dnl secondary(aqua,,, LIT, .i=0x70, LIT, .i=0x30, STORE, LIT, .i=0x10, LIT , .i=0x31, STORE)
+dnl secondary(red,,, LIT, .i=0x70, LIT, .i=0x30, STORE, LIT, .i=0x60, LIT , .i=0x31, STORE)
+dnl secondary(off,,, LIT, .i=0x70, LIT, .i=0x30, STORE, LIT, .i=0x70, LIT , .i=0x31, STORE)
+
+secondary(hi,,, LIT, .s= FORTHNAME " " REVISION "\r\n", TYPE)
 
 secondary(boot,,, HI, QUIT)
-/*
 
 primary(cold)
   vmstate->dictionary = 0;
@@ -851,13 +876,11 @@ secondary(postpone,, .immediate=1, l(
    IMMEDIATEP ZBRANCH self[6] COMMA EXIT
    LITERAL LIT COMMA COMMA
 ))
-*/
 
 dnl convenience
 
 dnl non-core
 
-/*
 include(core.m4)
 include(core-ext.m4)
 include(tools.m4)
@@ -866,7 +889,6 @@ include(ffi.m4)
 include(floating.m4)
 include(double.m4)
 include(bitfiddle.m4)
-*/
 
 dnl platform
 

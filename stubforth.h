@@ -14,15 +14,22 @@ union cell {
 };
 typedef union cell cell;
 
+union name_store {
+  const char * name_d;
+  const char __flash * name_p;
+};
+typedef union name_store name_store;
 /* GCC supports static initialization of flexible arrays, but we work
    around it for portability's sake and because it produces bogus
    sizes in the ELF meta-info. */
 
+// name_store name;
 #define staticword(len)				\
-  const char *name;				\
+  name_store name; \
   int compile_only : 1;				\
   int immediate : 1;				\
   int smudge : 1;				\
+  int builtin : 1;				\
   struct word *link;				\
   void *code;					\
   cell data[len];				\
