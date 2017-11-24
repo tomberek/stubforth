@@ -159,6 +159,41 @@ const word *find(const word *p, const char *key)
    return p;
 }
 
+struct CDB {
+    size_t length;
+    char chars[];
+}
+
+define(STRING,`{
+    .length = len($1),
+    .chars = "$1",
+}')
+
+const word *compiler_ff(CDB *token){
+    if(token->length==0) quit();
+    token->chars[token->length]=0x60; // backtick
+}
+
+static int strcmp_ff(CDB *at, CDB *bt) {
+  if(at->length != bt->length) return 0;
+  char *a = at->chars;
+  char *b = bt->chars;
+  int count = at.length < bt.length ? at.length : bt.length;
+  while (count && *a && *a == *b)
+     a++, b++, count--;
+  return (*a == *b) ? 0 : (*a > *b) ? 1 : -1;
+}
+
+const word *find_ff(const word *p, const CDB *key)
+{
+   while(p) {
+      if(! p->smudge && (0 == strcmp(p->name, key->chars)))
+         break;
+      p = p->link;
+   }
+   return p;
+}
+
 dnl main
 int main()
 {
@@ -646,36 +681,89 @@ primary(align)
   vmstate->dp = aligned(vmstate->dp);
 }
 
+dnl FreeForth deviations: accept $7F..$FF
 primary(number)
 dnl ( s -- n )
 dnl Convert string to number according to base variable.
 dnl On failure, abort.
 {
+  int base = 10;
+  int year = -2;
+  int accum1 = 0;
   t.i = 0;
   char *s = sp[-1].s;
   int c;
   int negate = 0;
-  while ((c = *s)) {
-   if (c == '-')
-      { negate ^= 1; s++; continue; }
-   else if (c <= '9')
-      c -= '0';
-   else
-    {
-      c |= 1 << 5; /* upcase */
-      c = c - 'a' + 10;
-    }
-   if (c < 0 || c >= vmstate->base) {
-      try_deallocate(sp[-1].s, &vmstate->dp);
-      cthrow(-24, invalid numeric argument);
-   }
-   t.i *= vmstate->base;
-   t.i += c;
-   s++;
+  if (*s == '-'){
+    negate ^= 1;
+    s++;
   }
+  while ((c = *s)) {
+   switch(c){
+   case '-': // Gregorian date
+      if (year == -2){
+          year = t.i;
+          t.i = 0;
+          break;
+      }
+      if ( t.i < 3){
+          t.i += 12;
+          year -= 1;
+      }
+      accum1 = t.i + 1;
+      accum1 = accum1 * (31+30+31+30+31) / 5 - 123; // days since march.
+      accum1 += (1461 * year) >> 2;
+      accum1 -= year / 100 ;
+      accum1 += year / 400 ;
+      t.i = 0;
+      break;
+   case '_': // Time seperator
+      if (accum1 > 730484)
+          accum1 -= 730485;
+      accum1 += t.i;
+      accum1 *= 24;
+      t.i = 0;
+      break;
+   case ':':
+      accum1 += t.i;
+      accum1 *= 60;
+      t.i = 0;
+      break;
+   case '$':
+      base = 16;
+      break;
+   case '&':
+      base = 8;
+      break;
+   case '%':
+      base = 2;
+      break;
+   case '#':
+      base = t.i;
+      t.i = 0;
+      break;
+   default:
+       if (c <= '9')
+          c -= '0';
+       else
+        {
+          c |= 1 << 5; /* upcase */
+          c = c - 'a' + 10;
+        }
+       if (c < 0 || c >= base) {
+          try_deallocate(sp[-1].s, &vmstate->dp);
+          cthrow(-24, invalid numeric argument);
+       }
+       t.i *= base;
+       t.i += c;
+
+     };
+     s++;
+  };
   try_deallocate(sp[-1].s, &vmstate->dp);
   if (negate)
     t.i = -t.i;
+  t.i += accum1;
   sp[-1] = t;
 }
 
@@ -761,6 +849,23 @@ secondary(colon, :,, WORD, CONS, LIT, &&enter, COMMA)
 secondary(constant,,, WORD, CONS, LIT, &&docon, COMMA, COMMA, SMUDGE, SUSPEND)
 secondary(variable,,, CREATE, ZERO, COMMA)
 
+dnl @ # -- @ #
+primary(freeforth) // ,,immediate,compile_only)
+{
+   char *s = sp[-2].s;
+   size_t len = sp[-1].u;
+   if( !s[len] )
+       return;
+
+   s[len++]=0x60;  // backtick
+   void *xt = _find(s,len);
+   if(!result) error();
+   
+   my_puts("parsing: ");
+   my_puts(sp[-1].s);
+   my_puts("\n");
+}
+
 dnl (char *) ---
 dnl interpret or compile s
 secondary(interpret,,,
@@ -773,7 +878,7 @@ NUMBER,
 STATE, NULLP, ZBRANCH, self[19], EXIT,
 LITERAL)
 
-secondary(quit,,, WORD, INTERPRET, QSTACK, BRANCH, self[0])
+secondary(quit,,, WORD, FREEFORTH, INTERPRET, QSTACK, BRANCH, self[0])
 
 constant(redirect,, &redirect);
 
